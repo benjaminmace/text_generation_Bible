@@ -31,18 +31,29 @@ input_sequences_ready = pad_sequences(input_sequences, maxlen=max_sequence_lengt
 xs = input_sequences_ready[:, :-1]
 ys = tf.keras.utils.to_categorical(input_sequences_ready[:, -1], num_classes=TOTAL_WORDS)
 
-model = tf.keras.models.Sequential()
-model.add(tf.keras.layers.Embedding(TOTAL_WORDS, 400, input_length=max_sequence_length-1))
-model.add(tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(256, return_sequences=True)))
-model.add(tf.keras.layers.Dropout(0.2))
-model.add(tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(256, return_sequences=True)))
-model.add(tf.keras.layers.Conv1D(128, (2, ), strides=(2,), activation='relu'))
-model.add(tf.keras.layers.Conv1D(256, (2, ), strides=(2,), activation='relu'))
-model.add(tf.keras.layers.Conv1D(512, (2, ), strides=(2,), activation='relu'))
-model.add(tf.keras.layers.Flatten())
-model.add(tf.keras.layers.Dense(512, activation='relu'))
-model.add(tf.keras.layers.Dense(32, activation='relu'))
-model.add(tf.keras.layers.Dense(TOTAL_WORDS, activation='softmax'))
+
+
+
+inputs = tf.keras.Input(shape=(max_sequence_length-1),)
+x = tf.keras.layers.Embedding(TOTAL_WORDS, 512, input_length=max_sequence_length-1)(inputs)
+x2 = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(128, return_sequences=True))(x)
+x3 = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(128, return_sequences=True))(x2)
+x4 = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(128, return_sequences=True))(x3)
+x5 = tf.keras.layers.add([x2, x3, x4])
+x = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, axis=1))(x5)
+x = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, axis=2))(x)
+x = tf.keras.layers.ConvLSTM2D(256, (1, 1), padding='same')(x)
+x = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, axis=1))(x)
+x = tf.keras.layers.ConvLSTM2D(256, (1, 1), padding='same')(x)
+x = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, axis=1))(x)
+x = tf.keras.layers.ConvLSTM2D(256, (1, 1), padding='same')(x)
+x = tf.keras.layers.Reshape((-1, 83, 256))(x)
+x = tf.keras.layers.add([x, x5])
+x = tf.keras.layers.Flatten()(x)
+x = tf.keras.layers.Dense(256, activation='relu')(x)
+outputs = tf.keras.layers.Dense(TOTAL_WORDS, activation='softmax')(x)
+
+model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
 model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
@@ -50,10 +61,11 @@ model.summary()
 
 ES = tf.keras.callbacks.EarlyStopping(monitor='accuracy', patience=2)
 
-history = model.fit(xs, ys, batch_size=512, epochs=100, verbose=1, callbacks=[ES])
+history = model.fit(xs, ys, batch_size=1048, epochs=100, verbose=1, callbacks=[ES])
 
 tokenizer_json = tokenizer.to_json()
 with open('JAN2021.json', 'w', encoding='utf-8') as f:
     f.write(json.dumps(tokenizer_json, ensure_ascii=False))
 
 model.save('JAN2021.h5')
+
